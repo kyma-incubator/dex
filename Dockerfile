@@ -1,4 +1,4 @@
-FROM golang:1.12.9-alpine as builder
+FROM golang:1.13-alpine as builder
 
 ENV BASE_DIR /go/src/github.com/dexidp/dex
 ENV GO111MODULE on
