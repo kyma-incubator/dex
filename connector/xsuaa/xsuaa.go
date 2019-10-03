@@ -1,5 +1,4 @@
-// Package oidc implements logging in through OpenID Connect providers.
-package oidc
+package xsuaa
 
 import (
 	"context"
@@ -19,11 +18,12 @@ import (
 
 // Config holds configuration options for OpenID Connect logins.
 type Config struct {
-	Issuer       string `json:"issuer"`
-	ClientID     string `json:"clientID"`
-	ClientSecret string `json:"clientSecret"`
-	RedirectURI  string `json:"redirectURI"`
-
+	Issuer        string `json:"issuer"`
+	ClientID      string `json:"clientID"`
+	ClientSecret  string `json:"clientSecret"`
+	RedirectURI   string `json:"redirectURI"`
+	UsersEndpoint string `json:"usersEndpoint""`
+	AppName       string `json:"appName"`
 	// Causes client_secret to be passed as POST parameters instead of basic
 	// auth. This is specifically "NOT RECOMMENDED" by the OAuth2 RFC, but some
 	// providers require it.
@@ -49,7 +49,7 @@ type Config struct {
 	UserIDKey string `json:"userIDKey"`
 
 	// Configurable key which contains the user name claim
-	UserNameKey string `json:"userNameKey"`
+	UserNameKey *string `json:"userNameKey"`
 }
 
 // Domains that don't support basic auth. golang.org/x/oauth2 has an internal
@@ -107,23 +107,25 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 		registerBrokenAuthHeaderProvider(provider.Endpoint().TokenURL)
 	}
 
-	scopes := []string{oidc.ScopeOpenID}
-	if len(c.Scopes) > 0 {
-		scopes = append(scopes, c.Scopes...)
-	} else {
-		scopes = append(scopes, "profile", "email")
-	}
+	//This part is removed because in xsuaa returns all user groups when no scopes is defined in the token request
+	//scopes := []string{oidc.ScopeOpenID}
+	//if len(c.Scopes) > 0 {
+	//	scopes = append(scopes, c.Scopes...)
+	//}
+	//else {
+	//	scopes = append(scopes, "profile", "email")
+	//}
 
 	clientID := c.ClientID
-	return &oidcConnector{
+	return &xsuaaConnector{
 		provider:    provider,
 		redirectURI: c.RedirectURI,
 		oauth2Config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: c.ClientSecret,
 			Endpoint:     provider.Endpoint(),
-			Scopes:       scopes,
-			RedirectURL:  c.RedirectURI,
+			//Scopes:       []string,
+			RedirectURL: c.RedirectURI,
 		},
 		verifier: provider.Verifier(
 			&oidc.Config{ClientID: clientID},
@@ -134,16 +136,22 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 		insecureSkipEmailVerified: c.InsecureSkipEmailVerified,
 		getUserInfo:               c.GetUserInfo,
 		userIDKey:                 c.UserIDKey,
-		userNameKey:               c.UserNameKey,
+		userNameKey:               *c.UserNameKey,
+		userEndpoint:              c.UsersEndpoint,
+		appName:                   c.AppName,
 	}, nil
 }
 
 var (
-	_ connector.CallbackConnector = (*oidcConnector)(nil)
-	_ connector.RefreshConnector  = (*oidcConnector)(nil)
+	_ connector.CallbackConnector = (*xsuaaConnector)(nil)
+	_ connector.RefreshConnector  = (*xsuaaConnector)(nil)
 )
 
-type oidcConnector struct {
+type scopes struct {
+	Scopes []string `json:"scope"`
+}
+
+type xsuaaConnector struct {
 	provider                  *oidc.Provider
 	redirectURI               string
 	oauth2Config              *oauth2.Config
@@ -155,14 +163,32 @@ type oidcConnector struct {
 	getUserInfo               bool
 	userIDKey                 string
 	userNameKey               string
+	userEndpoint              string
+	appName                   string
 }
 
-func (c *oidcConnector) Close() error {
+func filterUserGroups(scopes []string, prefix string) (userGroups []string) {
+	//Return only scopes aka groups that contain given prefix (client display name)
+	if !strings.HasSuffix(prefix,"."){
+		prefix = prefix+"."
+	}
+
+	for _, scp := range scopes {
+		if strings.HasPrefix(scp, prefix) {
+			name := strings.TrimPrefix(scp, prefix)
+			userGroups = append(userGroups, name)
+		}
+	}
+	return userGroups
+}
+
+
+func (c *xsuaaConnector) Close() error {
 	c.cancel()
 	return nil
 }
 
-func (c *oidcConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, error) {
+func (c *xsuaaConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, error) {
 	if c.redirectURI != callbackURL {
 		return "", fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
 	}
@@ -189,36 +215,39 @@ func (e *oauth2Error) Error() string {
 	return e.error + ": " + e.errorDescription
 }
 
-func (c *oidcConnector) HandleCallback(s connector.Scopes, r *http.Request) (identity connector.Identity, err error) {
+func (c *xsuaaConnector) HandleCallback(s connector.Scopes, r *http.Request) (identity connector.Identity, err error) {
 	q := r.URL.Query()
 	if errType := q.Get("error"); errType != "" {
 		return identity, &oauth2Error{errType, q.Get("error_description")}
 	}
 	token, err := c.oauth2Config.Exchange(r.Context(), q.Get("code"))
 	if err != nil {
-		return identity, fmt.Errorf("oidc: failed to get token: %v", err)
+		return identity, fmt.Errorf("xsuaa: failed to get token: %v", err)
 	}
-
-	c.logger.Info("RAW ID TOKEN")
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
-		return identity, errors.New("oidc: no id_token in token response")
-	}
-	c.logger.Info(rawIDToken)
-	idToken, err := c.verifier.Verify(r.Context(), rawIDToken)
-	if err != nil {
-		return identity, fmt.Errorf("oidc: failed to verify ID Token: %v", err)
+		return identity, errors.New("xsuaa: no id_token in token response")
 	}
 
-	c.logger.Infof("%+v", idToken)
+	idToken, err := c.verifier.Verify(r.Context(), rawIDToken)
+	if err != nil {
+		return identity, fmt.Errorf("xsuaa: failed to verify ID Token: %v", err)
+	}
+
+	accessToken, err := c.verifier.Verify(r.Context(), token.AccessToken)
+
+	if err != nil {
+		return identity, fmt.Errorf("xsuaa: failed to verify access_token :%v", err)
+	}
 
 	var claims map[string]interface{}
 	if err := idToken.Claims(&claims); err != nil {
-		return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
+		return identity, fmt.Errorf("xsuaa: failed to decode claims: %v", err)
 	}
-	c.logger.Info("CLAIMS:")
-	c.logger.Infof("%+v", claims)
+
+	c.logger.Debugf("User claims %+v", claims)
+
 	userNameKey := "name"
 	if c.userNameKey != "" {
 		userNameKey = c.userNameKey
@@ -239,6 +268,14 @@ func (c *oidcConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 			return identity, errors.New("missing \"email_verified\" claim")
 		}
 	}
+
+	//TODO replaces scopes struct with whole claims struct and remove unnecessary type assertions then
+	var scp scopes
+
+	if err := accessToken.Claims(&scp); err != nil {
+		return identity, fmt.Errorf("xsuaa: failed to decode scopes: %v", err)
+	}
+
 	hostedDomain, _ := claims["hd"].(string)
 
 	if len(c.hostedDomains) > 0 {
@@ -265,11 +302,21 @@ func (c *oidcConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 		}
 	}
 
+	tenantID, found := claims["zid"].(string)
+
+	if !found {
+		return identity, errors.New("missing tenantID claim")
+	}
+
+	userGroups := filterUserGroups(scp.Scopes, c.appName)
+	userGroups = append(userGroups, fmt.Sprintf("tenantID=%s", tenantID))
+
 	identity = connector.Identity{
-		UserID:        idToken.Subject,
+		UserID:        accessToken.Subject,
 		Username:      name,
 		Email:         email,
 		EmailVerified: emailVerified,
+		Groups:        userGroups,
 	}
 
 	if c.userIDKey != "" {
@@ -284,6 +331,6 @@ func (c *oidcConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 }
 
 // Refresh is implemented for backwards compatibility, even though it's a no-op.
-func (c *oidcConnector) Refresh(ctx context.Context, s connector.Scopes, identity connector.Identity) (connector.Identity, error) {
+func (c *xsuaaConnector) Refresh(ctx context.Context, s connector.Scopes, identity connector.Identity) (connector.Identity, error) {
 	return identity, nil
 }
