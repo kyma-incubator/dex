@@ -1,11 +1,21 @@
-FROM golang:1.12.9-alpine
+FROM golang:1.12.9-alpine as builder
 
-RUN apk add --no-cache --update alpine-sdk
+ENV BASE_DIR /go/src/github.com/dexidp/dex
 
-COPY . /go/src/github.com/dexidp/dex
-RUN cd /go/src/github.com/dexidp/dex && make release-binary
+RUN apk add --update git gcc libc-dev
 
-FROM alpine:3.9
+WORKDIR ${BASE_DIR}
+
+COPY . ${BASE_DIR}/
+
+RUN GO111MODULE=on go mod tidy -v
+RUN GO111MODULE=on go mod verify
+RUN GO111MODULE=on go build -v -o ${BASE_DIR}/bin/dex ${BASE_DIR}/cmd/dex
+
+FROM alpine:3.10
+
+ENV BASE_DIR /go/src/github.com/dexidp/dex
+LABEL source=git@github.com:kyma-incubator/dex.git
 # Dex connectors, such as GitHub and Google logins require root certificates.
 # Proper installations should manage those certificates, but it's a bad user
 # experience when this doesn't work out of the box.
@@ -14,7 +24,9 @@ FROM alpine:3.9
 RUN apk add --update ca-certificates openssl
 
 USER 1001:1001
-COPY --from=0 /go/bin/dex /usr/local/bin/dex
+COPY --from=builder ${BASE_DIR}/bin/dex /usr/local/bin/dex
+
+COPY ./licenses/ /licenses
 
 # Import frontend assets and set the correct CWD directory so the assets
 # are in the default path.
