@@ -20,6 +20,12 @@ vet:
 check-fmt:
 	exit $(shell gofmt -l $$($(FILES_TO_CHECK)) | wc -l | xargs)
 
+fmt:
+	gofmt -l $$($(FILES_TO_CHECK))
+
+fix-fmt:
+	gofmt -w $$($(FILES_TO_CHECK))
+
 build-image: pull-licenses
 	docker build -t $(IMG_NAME) .
 

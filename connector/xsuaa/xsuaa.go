@@ -22,7 +22,7 @@ type Config struct {
 	ClientID      string `json:"clientID"`
 	ClientSecret  string `json:"clientSecret"`
 	RedirectURI   string `json:"redirectURI"`
-	UsersEndpoint string `json:"usersEndpoint""`
+	UsersEndpoint string `json:"usersEndpoint"`
 	AppName       string `json:"appName"`
 	// Causes client_secret to be passed as POST parameters instead of basic
 	// auth. This is specifically "NOT RECOMMENDED" by the OAuth2 RFC, but some
@@ -169,8 +169,8 @@ type xsuaaConnector struct {
 
 func filterUserGroups(scopes []string, prefix string) (userGroups []string) {
 	//Return only scopes aka groups that contain given prefix (client display name)
-	if !strings.HasSuffix(prefix,"."){
-		prefix = prefix+"."
+	if !strings.HasSuffix(prefix, ".") {
+		prefix = prefix + "."
 	}
 
 	for _, scp := range scopes {
@@ -181,7 +181,6 @@ func filterUserGroups(scopes []string, prefix string) (userGroups []string) {
 	}
 	return userGroups
 }
-
 
 func (c *xsuaaConnector) Close() error {
 	c.cancel()
