@@ -199,26 +199,19 @@ func (c *oidcConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 		return identity, fmt.Errorf("oidc: failed to get token: %v", err)
 	}
 
-	c.logger.Info("RAW ID TOKEN")
-
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
 		return identity, errors.New("oidc: no id_token in token response")
 	}
-	c.logger.Info(rawIDToken)
 	idToken, err := c.verifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
 		return identity, fmt.Errorf("oidc: failed to verify ID Token: %v", err)
 	}
 
-	c.logger.Infof("%+v", idToken)
-
 	var claims map[string]interface{}
 	if err := idToken.Claims(&claims); err != nil {
 		return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
 	}
-	c.logger.Info("CLAIMS:")
-	c.logger.Infof("%+v", claims)
 	userNameKey := "name"
 	if c.userNameKey != "" {
 		userNameKey = c.userNameKey
