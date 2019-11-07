@@ -1,6 +1,7 @@
 FROM golang:1.12.9-alpine as builder
 
 ENV BASE_DIR /go/src/github.com/dexidp/dex
+ENV GO111MODULE on
 
 RUN apk add --update git gcc libc-dev
 
@@ -8,9 +9,9 @@ WORKDIR ${BASE_DIR}
 
 COPY . ${BASE_DIR}/
 
-RUN GO111MODULE=on go mod tidy -v
-RUN GO111MODULE=on go mod verify
-RUN GO111MODULE=on go build -v -o ${BASE_DIR}/bin/dex ${BASE_DIR}/cmd/dex
+RUN go mod tidy -v
+RUN go mod verify
+RUN go build -v -o ${BASE_DIR}/bin/dex ${BASE_DIR}/cmd/dex
 
 FROM alpine:3.10
 
