@@ -338,7 +338,7 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 				s.renderError(r, w, http.StatusInternalServerError, "Connector Login Error")
 				return
 			}
-
+			authReqIDSanitized := s.HTMLContentSanitizer.Sanitize(authReqID)
 			// TODO(ericchiang): Don't inline this.
 			fmt.Fprintf(w, `<!DOCTYPE html>
 			  <html lang="en">
@@ -355,7 +355,7 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 				    document.forms[0].submit();
 				</script>
 			  </body>
-			  </html>`, action, value, authReqID)
+			  </html>`, action, value, authReqIDSanitized)
 		default:
 			s.renderError(r, w, http.StatusBadRequest, "Requested resource does not exist.")
 		}
