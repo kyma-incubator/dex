@@ -13,7 +13,6 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	admin "google.golang.org/api/admin/directory/v1"
-	"google.golang.org/api/option"
 
 	"github.com/dexidp/dex/connector"
 	pkg_groups "github.com/dexidp/dex/pkg/groups"
@@ -213,7 +212,7 @@ func (c *googleConnector) createIdentity(ctx context.Context, identity connector
 	}
 
 	var groups []string
-	if s.Groups && c.adminSrv != nil {
+	if s.Groups && c.adminEmail != "" && c.serviceAccountFilePath != "" {
 		groups, err = c.getGroups(claims.Email)
 		if err != nil {
 			return identity, fmt.Errorf("google: could not retrieve groups: %v", err)
@@ -252,7 +251,7 @@ func (c *googleConnector) getGroups(email string) ([]string, error) {
 		}
 
 		for _, group := range groupsList.Groups {
-			// TODO (joelspeed): Make desired group key configurable
+			// TODO (joelspeed): Make desried group key configurable
 			userGroups = append(userGroups, group.Email)
 		}
 
@@ -268,12 +267,6 @@ func (c *googleConnector) getGroups(email string) ([]string, error) {
 // sets up super user impersonation and creates an admin client for calling
 // the google admin api
 func createDirectoryService(serviceAccountFilePath string, email string) (*admin.Service, error) {
-	if serviceAccountFilePath == "" && email == "" {
-		return nil, nil
-	}
-	if serviceAccountFilePath == "" || email == "" {
-		return nil, fmt.Errorf("directory service requires both serviceAccountFilePath and adminEmail")
-	}
 	jsonCredentials, err := ioutil.ReadFile(serviceAccountFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading credentials from file: %v", err)
@@ -290,7 +283,7 @@ func createDirectoryService(serviceAccountFilePath string, email string) (*admin
 	ctx := context.Background()
 	client := config.Client(ctx)
 
-	srv, err := admin.NewService(ctx, option.WithHTTPClient(client))
+	srv, err := admin.New(client)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create directory service %v", err)
 	}

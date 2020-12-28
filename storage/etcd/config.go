@@ -3,15 +3,17 @@ package etcd
 import (
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/clientv3/namespace"
-	"go.etcd.io/etcd/pkg/transport"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/clientv3/namespace"
+	"github.com/coreos/etcd/pkg/transport"
 
 	"github.com/dexidp/dex/pkg/log"
 	"github.com/dexidp/dex/storage"
 )
 
-var defaultDialTimeout = 2 * time.Second
+var (
+	defaultDialTimeout = 2 * time.Second
+)
 
 // SSL represents SSL options for etcd databases.
 type SSL struct {
@@ -59,7 +61,7 @@ func (p *Etcd) open(logger log.Logger) (*conn, error) {
 	}
 
 	if p.SSL.CAFile != "" {
-		tlsinfo.TrustedCAFile = p.SSL.CAFile
+		tlsinfo.CAFile = p.SSL.CAFile
 		cfgtls = &tlsinfo
 	}
 

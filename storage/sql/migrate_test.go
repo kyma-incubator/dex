@@ -1,5 +1,3 @@
-// +build cgo
-
 package sql
 
 import (
@@ -32,15 +30,8 @@ func TestMigrate(t *testing.T) {
 		return sqlErr.ExtendedCode == sqlite3.ErrConstraintUnique
 	}
 
-	var sqliteMigrations []migration
-	for _, m := range migrations {
-		if m.flavor == nil || m.flavor == &flavorSQLite3 {
-			sqliteMigrations = append(sqliteMigrations, m)
-		}
-	}
-
-	c := &conn{db, &flavorSQLite3, logger, errCheck}
-	for _, want := range []int{len(sqliteMigrations), 0} {
+	c := &conn{db, flavorSQLite3, logger, errCheck}
+	for _, want := range []int{len(migrations), 0} {
 		got, err := c.migrate()
 		if err != nil {
 			t.Fatal(err)
